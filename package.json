@@ -1,0 +1,46 @@
+{
+  "name": "blue-carbon-registry",
+  "version": "1.0.0",
+  "description": "Blockchain-powered Blue Carbon Registry & MRV System",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "contracts"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm run install:frontend && npm run install:backend && npm run install:contracts",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && npm install", 
+    "install:contracts": "cd contracts && npm install",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:contracts\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:contracts": "cd contracts && npx hardhat node",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "deploy:testnet": "cd contracts && npx hardhat run scripts/deploy.js --network mumbai",
+    "test": "npm run test:frontend && npm run test:backend && npm run test:contracts",
+    "test:frontend": "cd frontend && npm run test",
+    "test:backend": "cd backend && npm run test",
+    "test:contracts": "cd contracts && npx hardhat test",
+    "clean": "rm -rf node_modules frontend/node_modules backend/node_modules contracts/node_modules",
+    "setup": "npm run install:all && npm run compile:contracts",
+    "compile:contracts": "cd contracts && npx hardhat compile"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "keywords": [
+    "blockchain",
+    "blue-carbon",
+    "mrv",
+    "carbon-credits",
+    "mangroves",
+    "climate",
+    "registry"
+  ],
+  "author": "Blue Carbon Team",
+  "license": "MIT"
+}

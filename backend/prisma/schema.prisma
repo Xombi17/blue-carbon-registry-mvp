@@ -1,0 +1,125 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Using String fields instead of enums for SQLite compatibility
+
+model User {
+  id                String     @id @default(uuid())
+  email             String     @unique
+  walletAddress     String?    @unique
+  password          String
+  name              String
+  organization      String?
+  role              String     @default("COMMUNITY")
+  isEmailVerified   Boolean    @default(false)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  // Relations
+  submittedProjects Project[]  @relation("ProjectSubmitter")
+  verifiedProjects  Project[]  @relation("ProjectVerifier")
+  carbonCredits     CarbonCredit[]
+  
+  @@map("users")
+}
+
+model Project {
+  id                      String        @id @default(uuid())
+  blockchainId            Int?          @unique // ID on blockchain
+  name                    String
+  description             String
+  ecosystemType           String        // MANGROVE, SEAGRASS, SALT_MARSH, OTHER
+  location                String
+  coordinates             String?       // JSON string of coordinates
+  geoJsonHash             String?       // IPFS hash of GeoJSON data
+  estimatedCarbonCapture  Int           // tons CO2
+  areaSize                Int           // hectares
+  submissionTimestamp     DateTime      @default(now())
+  status                  String        @default("PENDING") // PENDING, VERIFIED, REJECTED, CREDITS_ISSUED
+  verificationTimestamp   DateTime?
+  verificationNotes       String?
+  
+  // Relations
+  submitterId             String
+  submitter               User          @relation("ProjectSubmitter", fields: [submitterId], references: [id])
+  verifierId              String?
+  verifier                User?         @relation("ProjectVerifier", fields: [verifierId], references: [id])
+  
+  evidenceFiles           EvidenceFile[]
+  carbonCredits           CarbonCredit[]
+  
+  @@map("projects")
+}
+
+model EvidenceFile {
+  id              String    @id @default(uuid())
+  filename        String
+  originalName    String
+  mimetype        String
+  size            Int
+  ipfsHash        String
+  uploadTimestamp DateTime  @default(now())
+  
+  // Relations
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@map("evidence_files")
+}
+
+model CarbonCredit {
+  id                    String        @id @default(uuid())
+  tokenId               Int?          @unique // NFT token ID
+  projectId             String
+  carbonAmount          Int           // tons CO2
+  vintageYear           Int
+  issuanceDate          DateTime      @default(now())
+  status                String        @default("ACTIVE") // ACTIVE, RETIRED, TRANSFERRED
+  retirementDate        DateTime?
+  retirementReason      String?
+  certificationStandard String        @default("VCS")
+  ipfsMetadataHash      String?
+  
+  // Relations
+  project               Project       @relation(fields: [projectId], references: [id])
+  ownerId               String
+  owner                 User          @relation(fields: [ownerId], references: [id])
+  
+  transactions          CreditTransaction[]
+  
+  @@map("carbon_credits")
+}
+
+model CreditTransaction {
+  id              String        @id @default(uuid())
+  creditId        String
+  fromAddress     String?
+  toAddress       String
+  transactionHash String        @unique
+  transactionType String        // "MINT", "TRANSFER", "RETIRE"
+  timestamp       DateTime      @default(now())
+  
+  // Relations
+  credit          CarbonCredit  @relation(fields: [creditId], references: [id])
+  
+  @@map("credit_transactions")
+}
+
+model SystemConfig {
+  id                    String    @id @default(uuid())
+  key                   String    @unique
+  value                 String
+  description           String?
+  updatedAt             DateTime  @updatedAt
+  
+  @@map("system_config")
+}
