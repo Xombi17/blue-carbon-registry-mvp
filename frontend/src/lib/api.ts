@@ -1,310 +1,377 @@
-import axios from 'axios'
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
-
-// Create axios instance with default config
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add auth token to requests
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth-token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-
-// Handle auth errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('auth-token')
-      localStorage.removeItem('user')
-      window.location.href = '/auth/login'
-    }
-    return Promise.reject(error)
-  }
-)
+// API Client for Blue Carbon Registry Backend
+import { toast } from "sonner";
 
 // Types
 export interface User {
-  id: string
-  email: string
-  name: string
-  organization?: string
-  role: 'COMMUNITY' | 'VERIFIER' | 'ADMIN' | 'OBSERVER'
-  walletAddress?: string
-  isEmailVerified: boolean
-  createdAt: string
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  organization?: string;
+  walletAddress?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Project {
-  id: string
-  name: string
-  description: string
-  ecosystemType: 'MANGROVE' | 'SEAGRASS' | 'SALT_MARSH' | 'OTHER'
-  location: string
-  coordinates?: string
-  geoJsonHash?: string
-  estimatedCarbonCapture: number
-  areaSize: number
-  submissionTimestamp: string
-  status: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'CREDITS_ISSUED'
-  verificationTimestamp?: string
-  verificationNotes?: string
-  submitter: User
-  verifier?: User
-  evidenceFiles: EvidenceFile[]
-  carbonCredits: CarbonCredit[]
+  id: number;
+  title: string;
+  description: string;
+  ecosystem: string;
+  location: string;
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
+  area: number;
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  userId: number;
+  verifierId?: number;
+  carbonCreditsEstimated: number;
+  carbonCreditsIssued: number;
+  evidenceFiles: EvidenceFile[];
+  tokenId?: string;
+  blockchainTxHash?: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: User;
+  verifier?: User;
 }
 
 export interface EvidenceFile {
-  id: string
-  filename: string
-  originalName: string
-  mimetype: string
-  size: number
-  ipfsHash: string
-  url?: string
-  uploadTimestamp: string
+  id: number;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  ipfsHash?: string;
+  projectId: number;
+  createdAt: string;
 }
 
 export interface CarbonCredit {
-  id: string
-  tokenId?: number
-  carbonAmount: number
-  vintageYear: number
-  issuanceDate: string
-  status: 'ACTIVE' | 'RETIRED' | 'TRANSFERRED'
-  retirementDate?: string
-  retirementReason?: string
-  certificationStandard: string
-  ipfsMetadataHash?: string
-  project: Project
-  owner: User
+  id: number;
+  projectId: number;
+  amount: number;
+  tokenId: string;
+  status: 'MINTED' | 'TRADED' | 'RETIRED';
+  currentOwner: string;
+  blockchainTxHash: string;
+  createdAt: string;
+  project?: Project;
 }
 
 export interface RegistryStats {
-  overview: {
-    totalProjects: number
-    verifiedProjects: number
-    pendingProjects: number
-    totalCredits: number
-    activeCredits: number
-    retiredCredits: number
-    totalCarbonIssued: number
-    totalCarbonRetired: number
-    averageCarbonPerProject: number
+  totalProjects: number;
+  verifiedProjects: number;
+  pendingProjects: number;
+  rejectedProjects: number;
+  totalCarbonCredits: number;
+  totalUsers: number;
+}
+
+// Configuration
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+class ApiClient {
+  private baseURL: string;
+
+  constructor(baseURL: string) {
+    this.baseURL = baseURL;
   }
-  ecosystemDistribution: Record<string, number>
-  recentProjects: Project[]
-  lastUpdated: string
-}
 
-// Auth API
-export const authAPI = {
-  register: async (data: {
-    email: string
-    password: string
-    name: string
-    organization?: string
-    role?: string
-  }) => {
-    const response = await api.post('/api/auth/register', data)
-    return response.data
-  },
-
-  login: async (data: { email: string; password: string }) => {
-    const response = await api.post('/api/auth/login', data)
-    return response.data
-  },
-
-  getProfile: async () => {
-    const response = await api.get('/api/auth/profile')
-    return response.data
-  },
-
-  updateProfile: async (data: {
-    name?: string
-    organization?: string
-    walletAddress?: string
-  }) => {
-    const response = await api.put('/api/auth/profile', data)
-    return response.data
-  },
-}
-
-// Projects API
-export const projectsAPI = {
-  getProjects: async (params?: {
-    status?: string
-    ecosystemType?: string
-    page?: number
-    limit?: number
-    search?: string
-  }) => {
-    const response = await api.get('/api/projects', { params })
-    return response.data
-  },
-
-  getProject: async (id: string) => {
-    const response = await api.get(`/api/projects/${id}`)
-    return response.data
-  },
-
-  submitProject: async (data: {
-    name: string
-    description: string
-    ecosystemType: string
-    location: string
-    estimatedCarbonCapture: number
-    areaSize: number
-    coordinates?: object
-    evidenceHashes: string[]
-    geoJsonHash?: string
-  }) => {
-    const response = await api.post('/api/projects', data)
-    return response.data
-  },
-
-  updateProject: async (id: string, data: any) => {
-    const response = await api.put(`/api/projects/${id}`, data)
-    return response.data
-  },
-
-  deleteProject: async (id: string) => {
-    const response = await api.delete(`/api/projects/${id}`)
-    return response.data
-  },
-}
-
-// Upload API
-export const uploadAPI = {
-  uploadFiles: async (files: File[]) => {
-    const formData = new FormData()
-    files.forEach((file) => {
-      formData.append('files', file)
-    })
-
-    const response = await api.post('/api/upload/files', formData, {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const token = localStorage.getItem('auth-token');
+    
+    const config: RequestInit = {
+      ...options,
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+        ...options.headers,
       },
-    })
-    return response.data
-  },
+    };
 
-  uploadGeoJSON: async (data: { geoJson: any; projectName?: string }) => {
-    const response = await api.post('/api/upload/geojson', data)
-    return response.data
-  },
+    try {
+      const response = await fetch(`${this.baseURL}${endpoint}`, config);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return response.json();
+      }
+      
+      return response.text() as T;
+    } catch (error) {
+      console.error('API Request Error:', error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      }
+      throw error;
+    }
+  }
+
+  private async uploadRequest<T>(
+    endpoint: string,
+    formData: FormData
+  ): Promise<T> {
+    const token = localStorage.getItem('auth-token');
+    
+    const config: RequestInit = {
+      method: 'POST',
+      body: formData,
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    };
+
+    try {
+      const response = await fetch(`${this.baseURL}${endpoint}`, config);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('API Upload Error:', error);
+      if (error instanceof Error) {
+        toast.error(error.message);
+      }
+      throw error;
+    }
+  }
+
+  // Authentication
+  async login(credentials: { email: string; password: string }) {
+    return this.request<{ user: User; token: string }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+  }
+
+  async register(userData: {
+    name: string;
+    email: string;
+    password: string;
+    organization?: string;
+    role?: string;
+  }) {
+    return this.request<{ user: User; token: string }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  }
+
+  async getProfile() {
+    return this.request<{ user: User }>('/api/auth/profile');
+  }
+
+  async updateProfile(profileData: {
+    name?: string;
+    organization?: string;
+    walletAddress?: string;
+  }) {
+    return this.request<{ user: User }>('/api/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    });
+  }
+
+  // Projects
+  async getProjects() {
+    return this.request<{ projects: Project[] }>('/api/projects');
+  }
+
+  async getProject(id: number) {
+    return this.request<{ project: Project }>(`/api/projects/${id}`);
+  }
+
+  async getUserProjects() {
+    return this.request<{ projects: Project[] }>('/api/projects/user');
+  }
+
+  async createProject(projectData: {
+    title: string;
+    description: string;
+    ecosystem: string;
+    location: string;
+    coordinates: {
+      latitude: number;
+      longitude: number;
+    };
+    area: number;
+    carbonCreditsEstimated: number;
+  }) {
+    return this.request<{ project: Project }>('/api/projects', {
+      method: 'POST',
+      body: JSON.stringify(projectData),
+    });
+  }
+
+  async updateProject(id: number, projectData: Partial<Project>) {
+    return this.request<{ project: Project }>(`/api/projects/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(projectData),
+    });
+  }
+
+  async deleteProject(id: number) {
+    return this.request<{ message: string }>(`/api/projects/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // File uploads
+  async uploadFiles(projectId: number, files: File[]) {
+    const formData = new FormData();
+    formData.append('projectId', projectId.toString());
+    
+    files.forEach((file, index) => {
+      formData.append(`files`, file);
+    });
+
+    return this.uploadRequest<{ files: EvidenceFile[] }>('/api/upload/files', formData);
+  }
+
+  async getFile(fileId: number) {
+    return this.request<Blob>(`/api/upload/files/${fileId}`, {
+      headers: {
+        'Accept': '*/*',
+      },
+    });
+  }
+
+  // Registry (Public endpoints)
+  async getRegistryProjects(params?: {
+    status?: string;
+    ecosystem?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, value.toString());
+        }
+      });
+    }
+    
+    const queryString = searchParams.toString();
+    const endpoint = queryString ? `/api/registry/projects?${queryString}` : '/api/registry/projects';
+    
+    return this.request<{ projects: Project[]; pagination?: any }>(endpoint);
+  }
+
+  async getRegistryStats() {
+    return this.request<RegistryStats>('/api/registry/stats');
+  }
+
+  async getPublicProject(id: number) {
+    return this.request<{ project: Project }>(`/api/registry/projects/${id}`);
+  }
+
+  // Verification (Admin/Verifier endpoints)
+  async getPendingProjects() {
+    return this.request<{ projects: Project[] }>('/api/verification/pending');
+  }
+
+  async verifyProject(id: number, decision: {
+    status: 'VERIFIED' | 'REJECTED';
+    comments?: string;
+    carbonCreditsIssued?: number;
+  }) {
+    return this.request<{ project: Project }>(`/api/verification/projects/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(decision),
+    });
+  }
+
+  // Blockchain
+  async mintCarbonCredits(projectId: number, amount: number) {
+    return this.request<{ transaction: any }>('/api/blockchain/mint-credits', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, amount }),
+    });
+  }
+
+  async getCarbonCredits(projectId?: number) {
+    const endpoint = projectId 
+      ? `/api/blockchain/credits?projectId=${projectId}`
+      : '/api/blockchain/credits';
+    
+    return this.request<{ credits: CarbonCredit[] }>(endpoint);
+  }
+
+  async transferCredits(tokenId: string, to: string, amount: number) {
+    return this.request<{ transaction: any }>('/api/blockchain/transfer-credits', {
+      method: 'POST',
+      body: JSON.stringify({ tokenId, to, amount }),
+    });
+  }
+
+  // Utility methods
+  getFileUrl(fileId: number) {
+    return `${this.baseURL}/api/upload/files/${fileId}`;
+  }
+
+  getIPFSUrl(hash: string) {
+    const ipfsGateway = import.meta.env.VITE_IPFS_GATEWAY || 'https://ipfs.io/ipfs/';
+    return `${ipfsGateway}${hash}`;
+  }
 }
 
-// Verification API
-export const verificationAPI = {
-  getPendingProjects: async () => {
-    const response = await api.get('/api/verification/pending')
-    return response.data
-  },
+// Create and export API client instance
+export const api = new ApiClient(API_BASE_URL);
 
-  verifyProject: async (id: string, notes?: string) => {
-    const response = await api.post(`/api/verification/${id}/verify`, { notes })
-    return response.data
-  },
+// Export individual API modules for cleaner imports
+export const authAPI = {
+  login: api.login.bind(api),
+  register: api.register.bind(api),
+  getProfile: api.getProfile.bind(api),
+  updateProfile: api.updateProfile.bind(api),
+};
 
-  rejectProject: async (id: string, notes: string) => {
-    const response = await api.post(`/api/verification/${id}/reject`, { notes })
-    return response.data
-  },
-}
+export const projectsAPI = {
+  getProjects: api.getProjects.bind(api),
+  getProject: api.getProject.bind(api),
+  getUserProjects: api.getUserProjects.bind(api),
+  createProject: api.createProject.bind(api),
+  updateProject: api.updateProject.bind(api),
+  deleteProject: api.deleteProject.bind(api),
+};
 
-// Registry API
 export const registryAPI = {
-  getProjects: async (params?: {
-    ecosystemType?: string
-    page?: number
-    limit?: number
-    sortBy?: string
-    sortOrder?: string
-  }) => {
-    const response = await api.get('/api/registry/projects', { params })
-    return response.data
-  },
+  getProjects: api.getRegistryProjects.bind(api),
+  getStats: api.getRegistryStats.bind(api),
+  getProject: api.getPublicProject.bind(api),
+};
 
-  getCredits: async (params?: {
-    status?: string
-    page?: number
-    limit?: number
-    ecosystemType?: string
-  }) => {
-    const response = await api.get('/api/registry/credits', { params })
-    return response.data
-  },
+export const uploadAPI = {
+  uploadFiles: api.uploadFiles.bind(api),
+  getFile: api.getFile.bind(api),
+  getFileUrl: api.getFileUrl.bind(api),
+  getIPFSUrl: api.getIPFSUrl.bind(api),
+};
 
-  getStats: async (): Promise<RegistryStats> => {
-    const response = await api.get('/api/registry/stats')
-    return response.data
-  },
+export const verificationAPI = {
+  getPendingProjects: api.getPendingProjects.bind(api),
+  verifyProject: api.verifyProject.bind(api),
+};
 
-  getMapData: async () => {
-    const response = await api.get('/api/registry/map-data')
-    return response.data
-  },
-}
-
-// Blockchain API
 export const blockchainAPI = {
-  getContracts: async () => {
-    const response = await api.get('/api/blockchain/contracts')
-    return response.data
-  },
+  mintCarbonCredits: api.mintCarbonCredits.bind(api),
+  getCarbonCredits: api.getCarbonCredits.bind(api),
+  transferCredits: api.transferCredits.bind(api),
+};
 
-  mintCredits: async (data: {
-    projectId: string
-    carbonAmount: number
-    vintageYear: number
-    recipientAddress: string
-    certificationStandard?: string
-  }) => {
-    const response = await api.post('/api/blockchain/mint-credits', data)
-    return response.data
-  },
-
-  getTransactions: async (params?: {
-    page?: number
-    limit?: number
-    type?: string
-  }) => {
-    const response = await api.get('/api/blockchain/transactions', { params })
-    return response.data
-  },
-
-  retireCredit: async (creditId: string, reason: string) => {
-    const response = await api.post('/api/blockchain/retire-credit', {
-      creditId,
-      reason,
-    })
-    return response.data
-  },
-
-  transferCredit: async (creditId: string, toAddress: string) => {
-    const response = await api.post('/api/blockchain/transfer-credit', {
-      creditId,
-      toAddress,
-    })
-    return response.data
-  },
-
-  getNetworkStatus: async () => {
-    const response = await api.get('/api/blockchain/network-status')
-    return response.data
-  },
-}
-
-export default api
+export default api;
